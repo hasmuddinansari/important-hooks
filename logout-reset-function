@@ -1,0 +1,31 @@
+import { connectRouter } from 'connected-react-router'
+import storage from 'redux-persist/lib/storage'
+import { combineReducers } from 'redux'
+import { client } from 'tr-utils'
+
+export const createReducer = (injectedReducers: any = {}) => {
+  const defaultReducer = {
+  }
+
+  const appReducer: any = combineReducers({
+    ...defaultReducer,
+    ...injectedReducers,
+  })
+
+  const rootReducer = (state, action) => {
+    /**
+     * Resetting redux state on logout
+     */
+
+    /* eslint-disable no-param-reassign */
+    if (action.type === LOGGED_OUT) {
+      storage.removeItem('persist:root')
+      client.resetStore()
+      state = undefined
+    }
+    return appReducer(state, action)
+  }
+  return rootReducer
+}
+
+export type reducerType = ReturnType<typeof createReducer>
