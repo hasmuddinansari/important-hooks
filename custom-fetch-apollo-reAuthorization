@@ -1,0 +1,65 @@
+// Create customFetch function for handling re-authorization
+
+import { getCookie, setCookie } from 'tr-utils/cookieHandler'
+import { TOKEN_KEY, GET_REFRESH_TOKEN } from './constants'
+import { checkIsTokenExpired } from './config'
+import { store } from 'tr-store'
+import { loggedOut } from 'tr-pages/auth-page/redux'
+
+export const CustomFetch = (uri, options) => {
+  let refreshingPromise = null
+
+  const initialRequest = fetch(uri, options)
+  const state = store.getState()
+
+  return initialRequest
+    .then(response => {
+      return response.json()
+    })
+    .then(() => {
+      const accessToken = getCookie({ name: 'accessToken' })
+      const refreshToken = state?.login?.refreshToken
+      const isRefreshTokenExpired = checkIsTokenExpired(refreshToken)
+      const isAccessExpired = checkIsTokenExpired(accessToken)
+
+      if (isRefreshTokenExpired && state?.login?.isLoggedIn) {
+        store.dispatch(loggedOut())
+      }
+
+      if (!isAccessExpired) {
+        options.headers[TOKEN_KEY] = `${accessToken}`
+      }
+
+      if (refreshToken && isAccessExpired) {
+        if (!refreshingPromise) {
+        
+          refreshingPromise = fetch(uri, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: GET_REFRESH_TOKEN,
+              variables: { refreshToken },
+            }),
+          }).then((refreshTokenResponse: any) => {
+            if (refreshTokenResponse.ok) {
+              return refreshTokenResponse.json().then(refreshJSON => {
+                return refreshJSON?.data?.getToken?.accessToken
+              })
+            }
+          })
+        }
+        return refreshingPromise.then(newAccessToken => {
+          refreshingPromise = null
+          
+          options.headers[TOKEN_KEY] = `${newAccessToken}`
+          
+          setCookie({ name: 'accessToken', value: newAccessToken })
+          setCookie({ name: 'accessTokenTime', value: new Date() })
+          
+          return fetch(uri, options)
+        })
+      } else {
+        return fetch(uri, options)
+      }
+    })
+}
